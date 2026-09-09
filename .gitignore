@@ -19,9 +19,12 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Test files
+# Test files & media
 test_submission.txt
 backend/test_submission.txt
 sql_app.db
 uploads/
+*.webp
+*.mp4
+
 

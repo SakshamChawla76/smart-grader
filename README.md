@@ -50,7 +50,6 @@ smart-grader/
 │   ├── package.json                # Dependencies (lucide-react, react 19, vite 8)
 │   └── vite.config.ts              # Vite server configuration (port 5180)
 │
-├── smartgrader_v2_demo.webp        # Full feature walkthrough animation
 └── README.md                       # Documentation
 ```
 
@@ -176,9 +175,12 @@ npm run dev
 
 ---
 
-## 🎥 Walkthrough Video
-A full demonstration video walkthrough is available in the repository:
-- File: `smartgrader_v2_demo.webp` (playable directly in any browser or media player).
+## 🎥 How to Create a Demo Video
+
+To record a demo video of SmartGrader on your local machine:
+1. **Windows Game Bar (Built-in)**: Press `Win + Alt + R` to start/stop high-definition screen recording directly in your browser.
+2. **OBS Studio**: Capture the window at `http://localhost:5180` for 60fps presentation recording with microphone narration.
+3. **Browser Extensions (Loom / Screenity)**: Record tab with camera bubble and voiceover for sharing with educators or team members.
 
 ---
 
