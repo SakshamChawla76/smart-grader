@@ -1,58 +1,57 @@
-# SmartGrader 🎓✨
+# SmartGrader v2.0 🎓✨
 
-> An AI-powered assignment grading platform inspired by [Gradescope](https://www.gradescope.com/) and [Smartail](https://smartail.ai/). Built with **React + Vite** frontend and **FastAPI + SQLite** backend.
+> An advanced AI-powered examination, automated paper evaluation, and moderation platform inspired by **Gradescope** and **AICOS (EvalDesk)**. Built with a modern **React + Vite + TailwindCSS** frontend and a high-performance **FastAPI + SQLite** backend.
 
 ![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4-06B6D4?logo=tailwindcss)
+![OCR](https://img.shields.io/badge/OCR-Tesseract%20%2B%20PyPDF-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## 📸 Features
+## 📸 Key Features & Capabilities
 
-| Feature | Description |
+| Module | Features & Capabilities |
 |---|---|
-| **Executive Dashboard** | Real-time overview of active courses, exam pipeline status, and recent submissions |
-| **Examination & Assessment Hub** | Complete exam lifecycle management with class/section, duration, and rubrics |
-| **3-Stage Evaluation Pipeline** | Ingest Answer Sheets ➔ Local AI Auto-Grading & OCR ➔ Teacher Review Queue |
-| **Side-by-Side Review Canvas** | Interactive document canvas on the left with question-wise score moderation on the right |
-| **Multi-Format OCR Engine** | Parses scanned answer sheets (.png, .jpg), handwritten PDFs, and source code files locally |
-| **Human-in-the-Loop Moderation** | Teachers can override AI scores per question, add personal remarks, and publish grades |
-| **Batch Script Ingestion** | Upload multiple student papers in one click with automatic student name resolution |
-| **Zero Cost & Offline** | Runs entirely locally without paid cloud LLMs or external API subscriptions |
-| **Premium Dark Glassmorphic UI** | Responsive, modern dark aesthetic with smooth transitions and micro-animations |
-
+| **📊 Executive Dashboard** | Live metrics tracker: Active Exams, Evaluated Papers, Cohort Average Score, and Teacher Verified Rate. |
+| **📝 Examination Hub** | Schedule and manage formal exams with Course, Class/Section, Duration, Total Marks, and Rubrics. |
+| **⚡ 3-Stage Pipeline** | Full automated lifecycle: `[1. Sheets Ingested]` ➔ `[2. AI Auto-Grading & OCR]` ➔ `[3. Teacher Review Queue]`. |
+| **🖥️ Side-by-Side Review Canvas** | AICOS/EvalDesk-style split screen: Zoomable answer sheet preview on the left, question-wise score moderation on the right. |
+| **🔍 Multi-Format OCR Engine** | Ingests handwritten/printed paper images (`.png`, `.jpg`, `.jpeg`, `.webp`), multi-page PDFs (`pypdf`), and code files. |
+| **👨‍🏫 Human-in-the-Loop Moderation** | Teachers can directly override points per question, add qualitative student remarks, and approve/publish grades. |
+| **📦 Batch Answer Sheet Upload** | Drag & drop class bundles with automatic student name resolution from filenames. |
+| **⚡ Instant Auto-Grader** | Quick single-paper evaluator with real-time markdown feedback and confidence breakdown. |
+| **🔒 100% Offline & Free** | Runs entirely on your local machine with **zero external API keys, zero cloud costs, and zero latency**. |
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture Overview
 
 ```
 smart-grader/
-├── backend/                    # FastAPI backend
-│   ├── main.py                 # App entry point & all API routes
-│   ├── models.py               # SQLAlchemy ORM models
-│   ├── schemas.py              # Pydantic request/response schemas
-│   ├── crud.py                 # Database CRUD operations
-│   ├── database.py             # SQLAlchemy engine & session setup
-│   ├── seed.py                 # Database seeder with sample data
+├── backend/
+│   ├── main.py                     # FastAPI routes (Auth, Courses, Exams, Submissions, Moderation, File Streaming)
+│   ├── models.py                   # SQLAlchemy ORM (User, Course, Assignment, Exam, Submission)
+│   ├── schemas.py                  # Pydantic schemas for requests, responses, and moderation
+│   ├── crud.py                     # Database query & moderation methods
+│   ├── database.py                 # SQLite session & engine setup
+│   ├── seed_exams.py               # Seed realistic exams, rubrics, and graded student submissions
 │   ├── services/
-│   │   └── grading_service.py  # Local heuristic grading engine
-│   ├── uploads/                # Uploaded submission files
-│   └── sql_app.db              # SQLite database (auto-created)
+│   │   └── grading_service.py      # Local OCR & Rubric-based Heuristic Grading Engine
+│   └── uploads/                    # Stored answer sheets (images, PDFs, code files)
 │
-├── frontend/                   # React + Vite + TailwindCSS
+├── frontend/
 │   ├── src/
-│   │   ├── App.tsx             # Main application component
-│   │   ├── App.css             # Custom styles
-│   │   └── index.css           # Tailwind imports
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.ts
+│   │   ├── App.tsx                 # Full Examination Hub & Side-by-Side Review Canvas UI
+│   │   ├── App.css                 # Global animations & styling
+│   │   └── index.css               # TailwindCSS theme tokens
+│   ├── package.json                # Dependencies (lucide-react, react 19, vite 8)
+│   └── vite.config.ts              # Vite server configuration (port 5180)
 │
-└── README.md                   # This file
+├── smartgrader_v2_demo.webp        # Full feature walkthrough animation
+└── README.md                       # Documentation
 ```
 
 ---
@@ -61,205 +60,127 @@ smart-grader/
 
 ### Prerequisites
 
-- **Python 3.12+** — [Download](https://python.org)
-- **Node.js 18+** — [Download](https://nodejs.org)
-- **Git** — [Download](https://git-scm.com)
+- **Python 3.12+** — [Download Python](https://python.org)
+- **Node.js 18+** — [Download Node.js](https://nodejs.org)
+- **Git**
 
-### 1. Clone the Repository
+---
 
-```bash
-git clone https://github.com/SakshamChawla76/smart-grader.git
-cd smart-grader
-```
-
-### 2. Set Up the Backend
+### 1. Set Up the Backend
 
 ```bash
 cd backend
 
-# Create a virtual environment
-python -m venv venv
-
-# Activate it
+# Create and activate virtual environment
 # Windows:
+python -m venv venv
 .\venv\Scripts\Activate.ps1
+
 # macOS/Linux:
+python3 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
-pip install fastapi uvicorn sqlalchemy pyjwt bcrypt pydantic-settings python-dotenv python-multipart
+# Install required dependencies
+pip install fastapi uvicorn sqlalchemy pyjwt bcrypt pydantic-settings python-dotenv python-multipart pypdf Pillow pytesseract
 
-# Seed the database with sample data
-python seed.py
-```
+# Seed database with realistic exams and submissions
+python seed_exams.py
 
-### 3. Start the Backend Server
-
-```bash
-# Still inside backend/ with venv activated
+# Start the backend server
 python main.py
 ```
+> The API server will be live at: **http://127.0.0.1:8000** (Swagger documentation at `http://127.0.0.1:8000/docs`).
 
-The API server starts at **http://127.0.0.1:8000**. You can visit http://127.0.0.1:8000/docs for the interactive Swagger documentation.
+---
 
-### 4. Set Up the Frontend
+### 2. Set Up the Frontend
 
-Open a **new terminal**:
+Open a second terminal window:
 
 ```bash
 cd frontend
 
-# Install dependencies
+# Install packages
 npm install
 
-# Start the dev server
+# Launch Vite dev server
 npm run dev
 ```
-
-The frontend starts at **http://localhost:5180**.
-
----
-
-## 📖 How to Use SmartGrader
-
-### Step 1: Open the Dashboard
-
-Navigate to **http://localhost:5180** in your browser. You'll see:
-- **Active Courses** count (seeded with 2 courses)
-- **Assignments** count (seeded with 2 assignments)
-- **Recent Assignments** list pulled live from the database
-
-### Step 2: Grade a Submission
-
-1. Click **"Grading"** in the left sidebar.
-2. **Select an Assignment** from the dropdown (e.g., "Midterm Exam Submission").
-3. **Enter the Student's Name** (e.g., "Jane Doe").
-4. **Upload a Submission File** — click the upload box and select any `.txt`, `.py`, `.js`, `.pdf`, or image file.
-5. **Define/Verify the Rubric** — type your grading criteria (e.g., "10 points for correctness, 5 points for code style, 5 points for documentation").
-6. Click **"Run Local Grader"**.
-7. Wait ~2 seconds — the **Evaluation Result** panel on the right will display:
-   - A **score out of 100**
-   - A **breakdown** of content analysis
-   - **AI-generated feedback** with strengths and areas for improvement
-
-### Step 3: Create New Courses & Assignments (via API)
-
-Since the frontend doesn't yet have creation forms, use the **Swagger docs** at http://127.0.0.1:8000/docs:
-
-#### Create a Course
-```
-POST /api/courses
-Body (JSON):
-{
-  "title": "Data Structures & Algorithms",
-  "description": "CS201 Spring 2026"
-}
-```
-
-#### Create an Assignment
-```
-POST /api/assignments
-Body (JSON):
-{
-  "title": "Binary Tree Homework",
-  "description": "Implement a BST with insert, search, delete.",
-  "rubric": "Correctness: 50 points\nEdge cases: 30 points\nCode quality: 20 points",
-  "due_date": "2026-10-15T23:59:00",
-  "course_id": 1
-}
-```
-
-After creating courses/assignments via Swagger, **refresh the frontend** — they'll appear in the Dashboard and Grading dropdown automatically.
-
-### Step 4: Register a New User (Optional)
-
-```
-POST /api/auth/register
-Body (JSON):
-{
-  "email": "professor@university.edu",
-  "password": "securepass123",
-  "full_name": "Prof. Johnson"
-}
-```
+> The web application will be accessible at: **http://localhost:5180**
 
 ---
 
-## 🔌 API Reference
+## 📖 Step-by-Step Teacher & Examiner Guide
+
+### 1. The Executive Dashboard
+- Open `http://localhost:5180`.
+- Review high-level statistics:
+  - Total Active Exams & Courses.
+  - Number of Answer Sheets evaluated.
+  - Overall Cohort Average Score.
+- Inspect the **AICOS 3-Stage Evaluation Pipeline** status.
+
+### 2. Examination & Assessment Hub (`Exams & Assessments` tab)
+- View scheduled, evaluating, and published examinations.
+- Click **"Create New Exam"**:
+  - Enter Title (e.g. *Midterm Examination 2026*).
+  - Select Course & Class/Section (e.g. *Grade 10 - Section A*).
+  - Configure Duration, Total Marks, and Rubric.
+- Click **"Open Dashboard"** on any exam to enter its submission management dashboard.
+
+### 3. Batch Upload Answer Sheets
+- In the Exam Dashboard, click **"Upload Sheets"**.
+- Select multiple student answer sheets (`.png`, `.jpg`, `.pdf`, `.py`, etc.).
+- Optional: Add student names comma-separated or let the system auto-derive names from filenames.
+- Click **"Upload Sheets"** to queue them in the pipeline.
+
+### 4. Running Batch AI Auto-Grading
+- Click **"Run Batch Auto-Grade (OCR)"**.
+- The local grading engine:
+  1. Ingests all pending student scripts.
+  2. Executes OCR on scanned images/PDFs.
+  3. Segments questions and matches criteria against the rubric.
+  4. Calculates points and assigns an initial score with confidence percentages.
+
+### 5. Side-by-Side Review & Moderation Canvas *(Flagship Feature)*
+- In the student submissions table, click **"Review & Moderate"** next to any student.
+- **Left Column**:
+  - Visual preview of the student's paper (zoom in/out with `+` / `-`, pan controls, line-numbered syntax viewer).
+- **Right Column**:
+  - Question-by-question breakdown cards showing:
+    - AI Score vs Max Marks
+    - AI Confidence percentage (e.g. `98% match`)
+    - Extracted Evidence found in the student's paper
+    - Pedagogical Remarks
+  - **Live Score Override**: Change any score input directly; the total score recalculates in real time!
+  - **Teacher Feedback**: Enter personalized remarks.
+- Click **"Approve & Publish Grade"** to lock the grade and publish results to the student.
+
+---
+
+## 🔌 API Reference Summary
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Health check |
-| `POST` | `/api/auth/register` | Register a new user |
-| `POST` | `/api/auth/login` | Login and get JWT token |
-| `GET` | `/api/courses` | List all courses |
-| `POST` | `/api/courses` | Create a new course |
-| `GET` | `/api/assignments` | List recent assignments |
-| `POST` | `/api/assignments` | Create a new assignment |
-| `POST` | `/api/grade` | Upload & grade a submission |
-
-### Grading Endpoint Details
-
-```
-POST /api/grade
-Content-Type: multipart/form-data
-
-Fields:
-  - assignment_id (int): ID of the assignment
-  - student_name (string): Name of the student
-  - rubric (string): Grading criteria
-  - file (file): The submission file
-```
+|---|---|---|
+| `GET` | `/api/stats` | Overall system metrics (exams, submissions, averages) |
+| `GET` | `/api/exams` | List all examinations with evaluation completion rates |
+| `POST` | `/api/exams` | Create a new examination with custom rubrics |
+| `GET` | `/api/exams/{id}` | Get detailed exam metadata and all student submissions |
+| `DELETE` | `/api/exams/{id}` | Delete an examination |
+| `POST` | `/api/exams/{id}/upload-sheets` | Upload batch answer sheets for an exam |
+| `POST` | `/api/exams/{id}/auto-grade-all` | Run batch local AI evaluation & OCR on pending scripts |
+| `GET` | `/api/submissions/{id}` | Get submission details and structured question breakdown |
+| `GET` | `/api/submissions/{id}/file` | Stream submission document/image for canvas preview |
+| `POST` | `/api/submissions/{id}/moderate` | Teacher moderation: update scores, notes, and publish |
+| `POST` | `/api/grade` | Instant single-file OCR & rubric grading |
 
 ---
 
-## 🧠 How the Grading Engine Works
-
-The Local Heuristic Engine (`services/grading_service.py`) runs **entirely offline** with zero dependencies on external APIs:
-
-1. **Content Extraction** — Reads the uploaded file bytes and attempts UTF-8 text decoding.
-2. **Keyword Matching** — Extracts significant keywords (>4 chars) from the rubric and checks for matches in the submission text.
-3. **Scoring Algorithm** — Combines content length analysis with keyword match count:
-   ```
-   score = min(100, max(40, 50 + (matches × 10) + (content_length % 20)))
-   ```
-4. **Feedback Generation** — Produces a structured Markdown report with score, breakdown, strengths, and areas for improvement.
-
-> **Note**: This is a heuristic engine designed for demonstration. For production use, you can swap `grading_service.py` with any LLM backend (OpenAI, Gemini, local Ollama, etc.) by modifying a single file.
+## 🎥 Walkthrough Video
+A full demonstration video walkthrough is available in the repository:
+- File: `smartgrader_v2_demo.webp` (playable directly in any browser or media player).
 
 ---
 
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | React 19, TypeScript, Vite, TailwindCSS v4 |
-| **Backend** | Python, FastAPI, Uvicorn |
-| **Database** | SQLite via SQLAlchemy ORM |
-| **Auth** | JWT (PyJWT) + bcrypt |
-| **Styling** | Glassmorphism, CSS Gradients, Micro-animations |
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Course & Assignment creation forms in the frontend
-- [ ] Full JWT auth flow in the frontend (login/register pages)
-- [ ] Batch submission upload (multiple files at once)
-- [ ] Grade history & analytics dashboard
-- [ ] PDF/Image OCR support for handwritten submissions
-- [ ] Pluggable LLM backend (Ollama, Gemini, OpenAI)
-- [ ] Student-facing portal for viewing grades
-- [ ] Export grades to CSV/Excel
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## 👤 Author
-
-**Saksham Chawla** — [@SakshamChawla76](https://github.com/SakshamChawla76)
+## ⚖️ License
+MIT License. Built for educational institutions, schools, and self-hosted automated paper evaluation.
