@@ -22,3 +22,6 @@ Thumbs.db
 # Test files
 test_submission.txt
 backend/test_submission.txt
+sql_app.db
+uploads/
+

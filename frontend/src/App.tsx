@@ -1,501 +1,1544 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
+import {
+  GraduationCap,
+  LayoutDashboard,
+  FileCheck2,
+  BookOpen,
+  ClipboardList,
+  Sparkles,
+  UploadCloud,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  ZoomIn,
+  ZoomOut,
+  ChevronRight,
+  ChevronLeft,
+  X,
+  Play,
+  RotateCcw,
+  Sliders,
+  Check,
+  Send,
+  Plus,
+  Eye,
+  FileText,
+  FileCode,
+  Image as ImageIcon,
+  FileSpreadsheet,
+  Trash2,
+  RefreshCw,
+  Search,
+  Award,
+  Layers,
+  ChevronDown
+} from 'lucide-react';
 
 const API = 'http://127.0.0.1:8000/api';
 
-interface Course { id: number; title: string; description?: string; instructor_id: number; }
-interface Assignment { id: number; title: string; description?: string; rubric?: string; due_date?: string; course_id: number; }
-interface Submission { id: number; student_name: string; assignment_id: number; file_path: string; mime_type: string; submitted_at: string; score: number | null; feedback: string | null; status: string; }
-interface Stats { course_count: number; assignment_count: number; total_submissions: number; graded_submissions: number; pending_submissions: number; avg_score: number; }
-interface CriterionResult { name: string; earned_points: number; max_points: number; percentage: number; evidence: string[]; }
-interface GradeResult { success: boolean; submission_id: number; total_score: number; max_score: number; percentage: number; letter_grade: string; criteria_results: CriterionResult[]; feedback_md: string; }
+interface Course {
+  id: number;
+  title: string;
+  description?: string;
+  instructor_id: number;
+}
+
+interface Assignment {
+  id: number;
+  title: string;
+  description?: string;
+  rubric?: string;
+  due_date?: string;
+  course_id: number;
+}
+
+interface CriterionResult {
+  name: string;
+  earned_points: number;
+  max_points: number;
+  percentage: number;
+  confidence?: number;
+  evidence?: string[];
+  remarks?: string;
+}
+
+interface Exam {
+  id: number;
+  title: string;
+  class_section?: string;
+  course_id: number;
+  exam_date?: string;
+  duration_minutes: number;
+  total_marks: number;
+  passing_marks: number;
+  rubric?: string;
+  status: string;
+  submission_count: number;
+  graded_count: number;
+  approved_count: number;
+  avg_score?: number;
+}
+
+interface Submission {
+  id: number;
+  student_name: string;
+  assignment_id?: number;
+  exam_id?: number;
+  file_path: string;
+  mime_type: string;
+  submitted_at: string;
+  score: number | null;
+  max_score: number;
+  feedback: string | null;
+  status: string;
+  moderator_score?: number | null;
+  moderator_notes?: string | null;
+  criteria_breakdown?: CriterionResult[] | null;
+  is_published?: boolean;
+}
+
+interface SubmissionDetail extends Submission {
+  file_name: string;
+  is_image: boolean;
+  is_pdf: boolean;
+  file_content: string;
+}
+
+interface Stats {
+  course_count: number;
+  assignment_count: number;
+  exam_count: number;
+  total_submissions: number;
+  graded_submissions: number;
+  approved_submissions: number;
+  pending_submissions: number;
+  avg_score: number;
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'exams' | 'courses' | 'submissions' | 'quick-grade'>('dashboard');
+  
+  // Data states
   const [courses, setCourses] = useState<Course[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Grading state
-  const [file, setFile] = useState<File | null>(null);
-  const [rubric, setRubric] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | ''>('');
-  const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
-  const [isGrading, setIsGrading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Selected Exam for detailed Exam Dashboard
+  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
+  const [selectedExamDetail, setSelectedExamDetail] = useState<any | null>(null);
+  const [isExamLoading, setIsExamLoading] = useState(false);
 
-  // Create Course modal
+  // Side-by-Side Review Canvas (AICOS-style Paper Evaluation)
+  const [canvasSubmissionId, setCanvasSubmissionId] = useState<number | null>(null);
+  const [canvasDetail, setCanvasDetail] = useState<SubmissionDetail | null>(null);
+  const [isCanvasLoading, setIsCanvasLoading] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [activeQuestionIdx, setActiveQuestionIdx] = useState<number>(0);
+  const [moderatorNotes, setModeratorNotes] = useState<string>('');
+  const [editableCriteria, setEditableCriteria] = useState<CriterionResult[]>([]);
+  const [isSavingModeration, setIsSavingModeration] = useState(false);
+
+  // Modals
+  const [showCreateExam, setShowCreateExam] = useState(false);
+  const [showUploadSheets, setShowUploadSheets] = useState(false);
   const [showCreateCourse, setShowCreateCourse] = useState(false);
+  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
+
+  // Forms
+  const [newExamTitle, setNewExamTitle] = useState('');
+  const [newExamCourseId, setNewExamCourseId] = useState<number | ''>('');
+  const [newExamClass, setNewExamClass] = useState('Grade 10 - Section A');
+  const [newExamDuration, setNewExamDuration] = useState(90);
+  const [newExamTotalMarks, setNewExamTotalMarks] = useState(100);
+  const [newExamRubric, setNewExamRubric] = useState(
+    'Q1: Solution Implementation & Correctness: 40 points\nQ2: Theoretical Proof & Mathematical Rigor: 35 points\nQ3: Code Modularity, Documentation & Edge Cases: 25 points'
+  );
+
+  // Upload Sheets form
+  const [batchExamId, setBatchExamId] = useState<number | ''>('');
+  const [batchFiles, setBatchFiles] = useState<FileList | null>(null);
+  const [batchNames, setBatchNames] = useState('');
+  const [isBatchUploading, setIsBatchUploading] = useState(false);
+
+  // Quick Grade Form
+  const [quickStudentName, setQuickStudentName] = useState('');
+  const [quickRubric, setQuickRubric] = useState('Correctness: 40 points\nLogic & Structure: 40 points\nDocumentation: 20 points');
+  const [quickFile, setQuickFile] = useState<File | null>(null);
+  const [isQuickGrading, setIsQuickGrading] = useState(false);
+  const [quickGradeResult, setQuickGradeResult] = useState<any | null>(null);
+
+  // Course Form
   const [newCourseTitle, setNewCourseTitle] = useState('');
   const [newCourseDesc, setNewCourseDesc] = useState('');
 
-  // Create Assignment modal
-  const [showCreateAssignment, setShowCreateAssignment] = useState(false);
+  // Assignment Form
   const [newAssTitle, setNewAssTitle] = useState('');
-  const [newAssDesc, setNewAssDesc] = useState('');
-  const [newAssRubric, setNewAssRubric] = useState('');
   const [newAssCourseId, setNewAssCourseId] = useState<number | ''>('');
-  const [newAssDueDate, setNewAssDueDate] = useState('');
+  const [newAssRubric, setNewAssRubric] = useState('');
+  const [newAssDesc, setNewAssDesc] = useState('');
 
-  // Viewing submission detail
-  const [viewingSub, setViewingSub] = useState<Submission | null>(null);
-
+  // Fetch all basic data
   const fetchAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [cRes, aRes, sRes, stRes] = await Promise.all([
-        fetch(`${API}/courses`), fetch(`${API}/assignments`),
-        fetch(`${API}/submissions`), fetch(`${API}/stats`),
+      const [cRes, aRes, eRes, sRes, stRes] = await Promise.all([
+        fetch(`${API}/courses`),
+        fetch(`${API}/assignments`),
+        fetch(`${API}/exams`),
+        fetch(`${API}/submissions`),
+        fetch(`${API}/stats`),
       ]);
       if (cRes.ok) setCourses(await cRes.json());
       if (aRes.ok) setAssignments(await aRes.json());
+      if (eRes.ok) setExams(await eRes.json());
       if (sRes.ok) setSubmissions(await sRes.json());
       if (stRes.ok) setStats(await stRes.json());
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     setIsLoading(false);
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
-  const getCourseName = (courseId: number) => courses.find(c => c.id === courseId)?.title || '—';
+  // Load Exam Detail
+  const fetchExamDetail = useCallback(async (examId: number) => {
+    setIsExamLoading(true);
+    try {
+      const res = await fetch(`${API}/exams/${examId}`);
+      if (res.ok) {
+        setSelectedExamDetail(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsExamLoading(false);
+  }, []);
 
-  // ── Handlers ──
-  const handleCreateCourse = async () => {
-    if (!newCourseTitle.trim()) return;
-    await fetch(`${API}/courses`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newCourseTitle, description: newCourseDesc }) });
-    setNewCourseTitle(''); setNewCourseDesc(''); setShowCreateCourse(false); fetchAll();
+  useEffect(() => {
+    if (selectedExamId) {
+      fetchExamDetail(selectedExamId);
+    }
+  }, [selectedExamId, fetchExamDetail]);
+
+  // Load Side-by-Side Review Canvas
+  const openReviewCanvas = async (submissionId: number) => {
+    setCanvasSubmissionId(submissionId);
+    setIsCanvasLoading(true);
+    try {
+      const res = await fetch(`${API}/submissions/${submissionId}`);
+      if (res.ok) {
+        const data: SubmissionDetail = await res.json();
+        setCanvasDetail(data);
+        setModeratorNotes(data.moderator_notes || '');
+        setEditableCriteria(data.criteria_breakdown || []);
+        setActiveQuestionIdx(0);
+        setZoomLevel(100);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsCanvasLoading(false);
   };
 
-  const handleCreateAssignment = async () => {
-    if (!newAssTitle.trim() || !newAssCourseId) return;
-    await fetch(`${API}/assignments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: newAssTitle, description: newAssDesc, rubric: newAssRubric, course_id: newAssCourseId, due_date: newAssDueDate || null }) });
-    setNewAssTitle(''); setNewAssDesc(''); setNewAssRubric(''); setNewAssCourseId(''); setNewAssDueDate(''); setShowCreateAssignment(false); fetchAll();
+  const closeReviewCanvas = () => {
+    setCanvasSubmissionId(null);
+    setCanvasDetail(null);
+    if (selectedExamId) fetchExamDetail(selectedExamId);
+    fetchAll();
   };
 
-  const handleGrade = async () => {
-    if (!file || !rubric.trim() || !studentName.trim() || !selectedAssignmentId) { alert('Fill in all fields.'); return; }
-    setIsGrading(true); setGradeResult(null);
+  // Handle Score Modification in Review Canvas
+  const handleScoreChange = (index: number, newScore: number) => {
+    const updated = [...editableCriteria];
+    const max = updated[index].max_points;
+    const clamped = Math.min(Math.max(0, newScore), max);
+    updated[index].earned_points = clamped;
+    updated[index].percentage = Math.round((clamped / max) * 100);
+    setEditableCriteria(updated);
+  };
+
+  // Save or Publish Moderation
+  const handleSaveModeration = async (publish: boolean) => {
+    if (!canvasDetail) return;
+    setIsSavingModeration(true);
+    
+    // Calculate total
+    const totalEarned = editableCriteria.reduce((sum, c) => sum + (c.earned_points || 0), 0);
+    
+    try {
+      const res = await fetch(`${API}/submissions/${canvasDetail.id}/moderate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score: totalEarned,
+          moderator_score: totalEarned,
+          moderator_notes: moderatorNotes,
+          criteria_breakdown: JSON.stringify(editableCriteria),
+          is_published: publish,
+          status: publish ? 'Approved' : 'AI_Graded',
+        }),
+      });
+      if (res.ok) {
+        setCanvasDetail(prev => prev ? { ...prev, score: totalEarned, moderator_score: totalEarned, is_published: publish, status: publish ? 'Approved' : 'AI_Graded' } : null);
+        if (selectedExamId) fetchExamDetail(selectedExamId);
+        fetchAll();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsSavingModeration(false);
+  };
+
+  // Batch Auto-Grade All for an Exam
+  const handleBatchAutoGrade = async (examId: number) => {
+    try {
+      const res = await fetch(`${API}/exams/${examId}/auto-grade-all`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchExamDetail(examId);
+        fetchAll();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Create Exam Handler
+  const handleCreateExam = async () => {
+    if (!newExamTitle.trim() || !newExamCourseId) return;
+    try {
+      const res = await fetch(`${API}/exams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newExamTitle,
+          course_id: Number(newExamCourseId),
+          class_section: newExamClass,
+          duration_minutes: newExamDuration,
+          total_marks: newExamTotalMarks,
+          rubric: newExamRubric,
+          status: 'Evaluating',
+        }),
+      });
+      if (res.ok) {
+        setShowCreateExam(false);
+        setNewExamTitle('');
+        fetchAll();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Batch Upload Sheets Handler
+  const handleUploadSheets = async () => {
+    if (!batchExamId || !batchFiles || batchFiles.length === 0) return;
+    setIsBatchUploading(true);
     const fd = new FormData();
-    fd.append('file', file); fd.append('rubric', rubric);
-    fd.append('student_name', studentName); fd.append('assignment_id', selectedAssignmentId.toString());
+    Array.from(batchFiles).forEach(f => fd.append('files', f));
+    if (batchNames) fd.append('student_names', batchNames);
+    
+    try {
+      const res = await fetch(`${API}/exams/${batchExamId}/upload-sheets`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (res.ok) {
+        setShowUploadSheets(false);
+        setBatchFiles(null);
+        setBatchNames('');
+        if (selectedExamId === Number(batchExamId)) fetchExamDetail(selectedExamId);
+        fetchAll();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsBatchUploading(false);
+  };
+
+  // Quick Grade Handler (single paper)
+  const handleQuickGrade = async () => {
+    if (!quickFile || !quickStudentName.trim() || !quickRubric.trim()) return;
+    setIsQuickGrading(true);
+    setQuickGradeResult(null);
+    const fd = new FormData();
+    fd.append('file', quickFile);
+    fd.append('student_name', quickStudentName);
+    fd.append('rubric', quickRubric);
     try {
       const res = await fetch(`${API}/grade`, { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.success) { setGradeResult(data); fetchAll(); }
-      else alert('Grading failed: ' + (data.detail || 'Unknown error'));
-    } catch { alert('Network error or server down.'); }
-    setIsGrading(false);
+      if (data.success) {
+        setQuickGradeResult(data);
+        fetchAll();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsQuickGrading(false);
   };
-
-  const handleDeleteCourse = async (id: number) => {
-    if (!confirm('Delete this course and all its assignments?')) return;
-    await fetch(`${API}/courses/${id}`, { method: 'DELETE' }); fetchAll();
-  };
-
-  const handleDeleteAssignment = async (id: number) => {
-    if (!confirm('Delete this assignment?')) return;
-    await fetch(`${API}/assignments/${id}`, { method: 'DELETE' }); fetchAll();
-  };
-
-  // ── Tab Icons ──
-  const tabIcons: Record<string, string> = {
-    dashboard: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
-    courses: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
-    assignments: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
-    grading: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
-    submissions: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
-  };
-
-  // ── Shared Components ──
-  const Modal = ({ show, onClose, title, children }: { show: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
-    if (!show) return null;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-card border border-border/50 rounded-2xl p-6 w-full max-w-lg shadow-2xl mx-4" onClick={e => e.stopPropagation()}>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">{title}</h2>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-          {children}
-        </div>
-      </div>
-    );
-  };
-
-  const Input = ({ label, value, onChange, placeholder, type = 'text' }: any) => (
-    <div className="mb-4">
-      <label className="block text-sm font-medium text-muted-foreground mb-1">{label}</label>
-      <input type={type} value={value} onChange={(e: any) => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all" />
-    </div>
-  );
-
-  const TextArea = ({ label, value, onChange, placeholder, rows = 3 }: any) => (
-    <div className="mb-4">
-      <label className="block text-sm font-medium text-muted-foreground mb-1">{label}</label>
-      <textarea value={value} onChange={(e: any) => onChange(e.target.value)} placeholder={placeholder} rows={rows}
-        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none" />
-    </div>
-  );
-
-  const gradeColor = (pct: number) => pct >= 70 ? 'text-emerald-400' : pct >= 40 ? 'text-amber-400' : 'text-red-400';
-  const gradeBg = (pct: number) => pct >= 70 ? 'from-emerald-500/20 to-emerald-500/5' : pct >= 40 ? 'from-amber-500/20 to-amber-500/5' : 'from-red-500/20 to-red-500/5';
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex overflow-hidden font-sans">
-      {/* ── Sidebar ── */}
-      <aside className="w-64 backdrop-blur-xl bg-primary/10 border-r border-border/50 flex flex-col transition-all duration-300 shrink-0">
-        <div className="h-16 flex items-center px-6 border-b border-border/50">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 shadow-lg shadow-purple-500/20 flex items-center justify-center mr-3">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Top Global Header */}
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+            <GraduationCap className="w-6 h-6 text-white" />
           </div>
-          <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">SmartGrader</span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-lg text-white tracking-tight">SmartGrader</span>
+              <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                Evaluation Engine v2.0
+              </span>
+            </div>
+            <p className="text-xs text-slate-400">Offline AI Assessment, OCR & Moderation Platform</p>
+          </div>
         </div>
-        <nav className="flex-1 px-4 py-6 space-y-1">
-          {Object.keys(tabIcons).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden ${activeTab === tab ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(99,102,241,0.1)]' : 'text-muted-foreground hover:bg-primary/5 hover:text-foreground'}`}>
-              {activeTab === tab && <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-purple-500 rounded-r-full" />}
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={tabIcons[tab]} /></svg>
-              <span className="capitalize font-medium">{tab}</span>
-            </button>
-          ))}
+
+        {/* Navigation Tabs */}
+        <nav className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 p-1 rounded-xl">
+          <button
+            onClick={() => { setActiveTab('dashboard'); setSelectedExamId(null); }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeTab === 'dashboard'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('exams')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeTab === 'exams'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <FileCheck2 className="w-4 h-4" />
+            Exams & Assessments
+            {stats && stats.exam_count > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px] font-semibold">
+                {stats.exam_count}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => { setActiveTab('courses'); setSelectedExamId(null); }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeTab === 'courses'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            Courses & Rubrics
+          </button>
+          <button
+            onClick={() => { setActiveTab('quick-grade'); setSelectedExamId(null); }}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeTab === 'quick-grade'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            Instant OCR Auto-Grade
+          </button>
         </nav>
-        <div className="p-4 border-t border-border/50">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold text-sm">SG</div>
-            <div><p className="text-sm font-semibold">Instructor</p><p className="text-xs text-muted-foreground">Local Engine</p></div>
+
+        {/* User Info & Quick Action */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowCreateExam(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow-md shadow-indigo-600/20 transition"
+          >
+            <Plus className="w-4 h-4" />
+            New Exam
+          </button>
+          <div className="h-6 w-px bg-slate-800" />
+          <div className="flex items-center gap-2.5 pl-1">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-xs font-bold text-indigo-300">
+              RS
+            </div>
+            <div className="text-left hidden sm:block">
+              <div className="text-xs font-semibold text-white leading-tight">Prof. Rajesh Sharma</div>
+              <div className="text-[10px] text-slate-400">Head Examiner & Moderator</div>
+            </div>
           </div>
         </div>
-      </aside>
+      </header>
 
-      {/* ── Main ── */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-500/10 blur-[120px] pointer-events-none" />
+      {/* Main Viewport */}
+      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        {/* ======================= DASHBOARD TAB ======================= */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            {/* Top Metrics Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-400">Active Exams</span>
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <FileCheck2 className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-white mt-3">
+                  {stats?.exam_count ?? 0}
+                </div>
+                <div className="text-xs text-indigo-400/80 mt-1 flex items-center gap-1">
+                  <span>Across {stats?.course_count ?? 0} academic courses</span>
+                </div>
+              </div>
 
-        <header className="h-16 flex items-center justify-between px-8 backdrop-blur-md bg-background/50 border-b border-border/30 z-10 shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight capitalize">{activeTab}</h1>
-        </header>
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-400">Answer Sheets Graded</span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-white mt-3">
+                  {stats?.graded_submissions ?? 0}
+                  <span className="text-sm font-normal text-slate-400 ml-1.5">
+                    / {stats?.total_submissions ?? 0}
+                  </span>
+                </div>
+                <div className="text-xs text-emerald-400/80 mt-1 flex items-center gap-1">
+                  <span>
+                    {stats?.total_submissions ? Math.round(((stats.graded_submissions) / stats.total_submissions) * 100) : 0}% completion rate
+                  </span>
+                </div>
+              </div>
 
-        <div className="flex-1 overflow-auto p-8 z-10">
-          <div className="max-w-6xl mx-auto space-y-8">
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-400">Moderated & Published</span>
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                    <Award className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-white mt-3">
+                  {stats?.approved_submissions ?? 0}
+                </div>
+                <div className="text-xs text-purple-400/80 mt-1 flex items-center gap-1">
+                  <span>Teacher signed & verified</span>
+                </div>
+              </div>
 
-            {/* ══════════════════════ DASHBOARD ══════════════════════ */}
-            {activeTab === 'dashboard' && stats && (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                  {[
-                    { label: 'Courses', value: stats.course_count, color: 'from-blue-500 to-cyan-400', icon: tabIcons.courses },
-                    { label: 'Assignments', value: stats.assignment_count, color: 'from-indigo-500 to-purple-500', icon: tabIcons.assignments },
-                    { label: 'Graded', value: stats.graded_submissions, color: 'from-emerald-400 to-teal-500', icon: tabIcons.grading },
-                    { label: 'Avg Score', value: `${stats.avg_score}%`, color: 'from-amber-400 to-orange-500', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
-                  ].map((s, i) => (
-                    <div key={i} className="relative group overflow-hidden rounded-2xl bg-card border border-border/50 p-6 shadow-sm hover:shadow-xl transition-all duration-300">
-                      <div className={`absolute top-0 right-0 w-28 h-28 bg-gradient-to-br ${s.color} opacity-10 rounded-full blur-2xl group-hover:opacity-20 transition-opacity`} />
-                      <div className="flex justify-between items-start">
-                        <div><p className="text-sm text-muted-foreground mb-1">{s.label}</p><h3 className="text-3xl font-bold">{s.value}</h3></div>
-                        <div className={`p-3 rounded-xl bg-gradient-to-br ${s.color}`}>
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={s.icon} /></svg>
+              <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 relative overflow-hidden backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-400">Cohort Average Score</span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-white mt-3">
+                  {stats?.avg_score ?? 0}%
+                </div>
+                <div className="text-xs text-amber-400/80 mt-1 flex items-center gap-1">
+                  <span>Normalized criteria weighting</span>
+                </div>
+              </div>
+            </div>
+
+            {/* AICOS-Style 3-Stage Pipeline Visualizer */}
+            <div className="bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-indigo-950/40 border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-indigo-400" />
+                    Automated Exam Evaluation Pipeline (AICOS Protocol)
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    End-to-end examination pipeline: From OCR & Scanned paper ingestion to AI evaluation and teacher moderation.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowUploadSheets(true)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-200 border border-slate-700 flex items-center gap-1.5 transition"
+                >
+                  <UploadCloud className="w-4 h-4 text-indigo-400" />
+                  Upload Batch Answer Sheets
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    1
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">Stage 1: Multi-Format Ingestion</div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Accepts scanned answer sheet images (.png, .jpg), handwritten PDFs, and source code files.
+                    </p>
+                    <span className="inline-block mt-2 text-[10px] font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                      OCR & Text Extractor Active
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    2
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">Stage 2: AI Rubric Auto-Grading</div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Matches criteria with NLP-free heuristics, detects question sections, and derives point confidence.
+                    </p>
+                    <span className="inline-block mt-2 text-[10px] font-medium text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                      100% Local / Zero API Cost
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                    3
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white">Stage 3: Teacher Review & Canvas</div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Side-by-side answer sheet preview, question-level score overrides, feedback entry, and grade publishing.
+                    </p>
+                    <span className="inline-block mt-2 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Full Human-in-the-Loop Control
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Examination List */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Current Active Examinations</h3>
+                  <p className="text-xs text-slate-400">Click any exam to enter its evaluation pipeline dashboard</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('exams')}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                >
+                  View All Exams <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {exams.map(ex => (
+                  <div
+                    key={ex.id}
+                    onClick={() => { setSelectedExamId(ex.id); setActiveTab('exams'); }}
+                    className="group bg-slate-950/60 hover:bg-slate-900 border border-slate-800/90 hover:border-indigo-500/40 rounded-xl p-5 cursor-pointer transition-all duration-200 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+                        {ex.class_section || 'General'}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        ex.status === 'Published'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : ex.status === 'Evaluating'
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                      }`}>
+                        {ex.status}
+                      </span>
+                    </div>
+
+                    <h4 className="font-bold text-sm text-white mt-3 group-hover:text-indigo-300 transition">
+                      {ex.title}
+                    </h4>
+
+                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-2">
+                      <span>Total Marks: {ex.total_marks}</span>
+                      <span>•</span>
+                      <span>Duration: {ex.duration_minutes}m</span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mt-4 pt-3 border-t border-slate-800/80">
+                      <div className="flex justify-between text-[11px] text-slate-400 mb-1.5">
+                        <span>Evaluation Progress</span>
+                        <span className="font-bold text-slate-200">
+                          {ex.graded_count} / {ex.submission_count} Scripts
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${ex.submission_count ? (ex.graded_count / ex.submission_count) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================= EXAMS & ASSESSMENTS TAB ======================= */}
+        {activeTab === 'exams' && (
+          <div className="space-y-6">
+            {!selectedExamId ? (
+              // List of all exams
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Examination & Assessment Hub</h2>
+                    <p className="text-xs text-slate-400">Manage exam schedules, paper uploads, and student score evaluation</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowUploadSheets(true)}
+                      className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1.5 transition"
+                    >
+                      <UploadCloud className="w-4 h-4 text-indigo-400" />
+                      Upload Answer Sheets
+                    </button>
+                    <button
+                      onClick={() => setShowCreateExam(true)}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-lg shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New Exam
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {exams.map(ex => (
+                    <div
+                      key={ex.id}
+                      className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="px-2.5 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                            {ex.class_section || 'Exam'}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            ex.status === 'Published'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : ex.status === 'Evaluating'
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          }`}>
+                            {ex.status}
+                          </span>
+                        </div>
+
+                        <h3 className="font-bold text-base text-white leading-snug">
+                          {ex.title}
+                        </h3>
+
+                        <p className="text-xs text-slate-400 mt-2 line-clamp-2">
+                          {ex.rubric ? ex.rubric.split('\n')[0] : 'No rubric configured'}
+                        </p>
+
+                        <div className="grid grid-cols-3 gap-2 my-4 bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/80 text-center">
+                          <div>
+                            <div className="text-[10px] text-slate-400">Total Marks</div>
+                            <div className="text-sm font-bold text-white mt-0.5">{ex.total_marks}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-400">Duration</div>
+                            <div className="text-sm font-bold text-white mt-0.5">{ex.duration_minutes}m</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-400">Avg Score</div>
+                            <div className="text-sm font-bold text-indigo-400 mt-0.5">{ex.avg_score ?? '—'}%</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 pt-2">
+                        <div className="flex justify-between text-xs text-slate-400">
+                          <span>Evaluation Status</span>
+                          <span className="font-semibold text-slate-200">
+                            {ex.graded_count}/{ex.submission_count} Graded
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                            style={{
+                              width: `${ex.submission_count ? (ex.graded_count / ex.submission_count) * 100 : 0}%`,
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2">
+                          <button
+                            onClick={() => setSelectedExamId(ex.id)}
+                            className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center justify-center gap-1"
+                          >
+                            Open Dashboard
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-2 rounded-2xl bg-card border border-border/50 p-6 shadow-sm">
-                    <h2 className="text-xl font-semibold mb-4">Recent Submissions</h2>
-                    {submissions.length === 0 ? <p className="text-muted-foreground text-sm">No submissions yet. Grade some work in the Grading tab!</p> : (
-                      <div className="space-y-3">
-                        {submissions.slice(0, 5).map(s => (
-                          <div key={s.id} onClick={() => { setViewingSub(s); }} className="flex items-center justify-between p-4 rounded-xl border border-border/30 hover:border-border/80 hover:bg-secondary/20 transition-colors cursor-pointer">
-                            <div>
-                              <p className="font-semibold">{s.student_name}</p>
-                              <p className="text-sm text-muted-foreground">{assignments.find(a => a.id === s.assignment_id)?.title || `Assignment #${s.assignment_id}`}</p>
-                            </div>
-                            <div className="text-right">
-                              {s.score !== null ? (
-                                <span className={`text-lg font-bold ${gradeColor(s.score)}`}>{s.score}%</span>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">Pending</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl bg-gradient-to-b from-indigo-900/40 to-card border border-indigo-500/20 p-6 shadow-lg relative overflow-hidden">
-                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/20 blur-3xl rounded-full" />
-                    <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-                    <div className="space-y-3">
-                      <button onClick={() => setShowCreateCourse(true)} className="w-full flex items-center gap-3 p-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white shadow-md transition-all hover:-translate-y-0.5">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                        <span className="font-semibold">New Course</span>
-                      </button>
-                      <button onClick={() => setShowCreateAssignment(true)} className="w-full flex items-center gap-3 p-4 rounded-xl border border-border/50 hover:border-indigo-500/50 hover:bg-secondary/50 transition-all">
-                        <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                        <span className="font-medium">New Assignment</span>
-                      </button>
-                      <button onClick={() => setActiveTab('grading')} className="w-full flex items-center gap-3 p-4 rounded-xl border border-border/50 hover:border-indigo-500/50 hover:bg-secondary/50 transition-all">
-                        <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        <span className="font-medium">Grade Submissions</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ══════════════════════ COURSES ══════════════════════ */}
-            {activeTab === 'courses' && (
-              <>
-                <div className="flex justify-between items-center">
-                  <p className="text-muted-foreground">{courses.length} course(s)</p>
-                  <button onClick={() => setShowCreateCourse(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-semibold transition-all">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    New Course
-                  </button>
-                </div>
-                {courses.length === 0 ? (
-                  <div className="rounded-2xl bg-card border border-border/50 p-12 text-center"><p className="text-muted-foreground">No courses yet. Create your first course!</p></div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {courses.map(c => {
-                      const assCount = assignments.filter(a => a.course_id === c.id).length;
-                      return (
-                        <div key={c.id} className="rounded-2xl bg-card border border-border/50 p-6 shadow-sm hover:shadow-lg transition-all group">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">{c.title[0]}</div>
-                            <button onClick={() => handleDeleteCourse(c.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all p-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                          </div>
-                          <h3 className="text-lg font-semibold mb-1">{c.title}</h3>
-                          <p className="text-sm text-muted-foreground mb-3">{c.description || 'No description'}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="px-2 py-1 rounded-full bg-secondary">{assCount} assignment{assCount !== 1 ? 's' : ''}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ══════════════════════ ASSIGNMENTS ══════════════════════ */}
-            {activeTab === 'assignments' && (
-              <>
-                <div className="flex justify-between items-center">
-                  <p className="text-muted-foreground">{assignments.length} assignment(s)</p>
-                  <button onClick={() => setShowCreateAssignment(true)} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-semibold transition-all">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    New Assignment
-                  </button>
-                </div>
-                {assignments.length === 0 ? (
-                  <div className="rounded-2xl bg-card border border-border/50 p-12 text-center"><p className="text-muted-foreground">No assignments yet. Create a course first, then add assignments.</p></div>
-                ) : (
-                  <div className="space-y-4">
-                    {assignments.map(a => {
-                      const subCount = submissions.filter(s => s.assignment_id === a.id).length;
-                      const gradedCount = submissions.filter(s => s.assignment_id === a.id && s.status === 'Graded').length;
-                      return (
-                        <div key={a.id} className="rounded-xl bg-card border border-border/50 p-5 shadow-sm hover:shadow-lg transition-all flex items-center justify-between group">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center">
-                              <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">{a.title}</h3>
-                              <p className="text-sm text-muted-foreground">{getCourseName(a.course_id)} · {subCount} submission{subCount !== 1 ? 's' : ''} · {gradedCount} graded</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            {a.due_date && <span className="text-xs text-muted-foreground hidden sm:inline">Due {new Date(a.due_date).toLocaleDateString()}</span>}
-                            <button onClick={() => handleDeleteAssignment(a.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all p-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ══════════════════════ GRADING ══════════════════════ */}
-            {activeTab === 'grading' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-5">
-                  <div className="rounded-2xl bg-card border border-border/50 p-6 shadow-sm">
-                    <h2 className="text-lg font-semibold mb-4">1. Assignment & Student</h2>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">Assignment</label>
-                      <select value={selectedAssignmentId} onChange={e => {
-                        const v = e.target.value ? Number(e.target.value) : '';
-                        setSelectedAssignmentId(v);
-                        if (v) { const a = assignments.find(a => a.id === v); if (a?.rubric) setRubric(a.rubric); }
-                      }} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-                        <option value="">— Select —</option>
-                        {assignments.map(a => <option key={a.id} value={a.id}>{a.title} ({getCourseName(a.course_id)})</option>)}
-                      </select>
-                    </div>
-                    <Input label="Student Name" value={studentName} onChange={setStudentName} placeholder="e.g. Jane Doe" />
-                  </div>
-
-                  <div className="rounded-2xl bg-card border border-border/50 p-6 shadow-sm">
-                    <h2 className="text-lg font-semibold mb-4">2. Upload Submission</h2>
-                    <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-indigo-500/50 rounded-xl p-8 text-center hover:bg-indigo-500/5 transition-colors cursor-pointer">
-                      <input type="file" ref={fileInputRef} className="hidden" onChange={e => setFile(e.target.files?.[0] || null)} accept="*/*" />
-                      <svg className="w-10 h-10 text-indigo-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                      <p className="font-medium">{file ? `📎 ${file.name}` : 'Click to upload (any text/code file)'}</p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-card border border-border/50 p-6 shadow-sm">
-                    <h2 className="text-lg font-semibold mb-2">3. Rubric</h2>
-                    <p className="text-xs text-muted-foreground mb-3">Format: "Criterion name: points" per line. Auto-populated from assignment if available.</p>
-                    <textarea value={rubric} onChange={e => setRubric(e.target.value)} rows={5} placeholder={"Correctness: 40 points\nCode style: 20 points\nDocumentation: 15 points\nError handling: 15 points\nEdge cases: 10 points"}
-                      className="w-full bg-secondary/50 border border-border/50 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none font-mono text-sm" />
-                  </div>
-
-                  <button onClick={handleGrade} disabled={isGrading || !file || !rubric || !studentName || !selectedAssignmentId}
-                    className="w-full flex items-center justify-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold shadow-lg shadow-purple-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg">
-                    {isGrading ? <span className="animate-pulse">Grading...</span> : <><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Grade Submission</>}
-                  </button>
-                </div>
-
-                {/* ── Results Panel ── */}
-                <div className="rounded-2xl bg-card border border-border/50 p-6 shadow-sm flex flex-col min-h-[600px]">
-                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    Evaluation Results
-                  </h2>
-                  <div className="flex-1 overflow-auto">
-                    {gradeResult ? (
-                      <div className="space-y-5">
-                        {/* Score Card */}
-                        <div className={`rounded-xl bg-gradient-to-r ${gradeBg(gradeResult.percentage)} border border-border/30 p-6 text-center`}>
-                          <p className={`text-5xl font-black ${gradeColor(gradeResult.percentage)}`}>{gradeResult.letter_grade}</p>
-                          <p className="text-2xl font-bold mt-1">{gradeResult.total_score} / {gradeResult.max_score}</p>
-                          <p className="text-muted-foreground">{gradeResult.percentage}%</p>
-                        </div>
-
-                        {/* Per-Criterion */}
-                        <div className="space-y-3">
-                          {gradeResult.criteria_results.map((cr, i) => (
-                            <div key={i} className="rounded-xl border border-border/30 p-4">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="font-semibold text-sm">{cr.name}</span>
-                                <span className={`font-bold text-sm ${gradeColor(cr.percentage)}`}>{cr.earned_points}/{cr.max_points}</span>
-                              </div>
-                              <div className="w-full bg-secondary rounded-full h-2 mb-2">
-                                <div className={`h-2 rounded-full transition-all duration-500 ${cr.percentage >= 70 ? 'bg-emerald-500' : cr.percentage >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
-                                  style={{ width: `${cr.percentage}%` }} />
-                              </div>
-                              <ul className="text-xs text-muted-foreground space-y-0.5">
-                                {cr.evidence.map((ev, j) => <li key={j}>{ev}</li>)}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
-                        <svg className="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        <p>Upload a submission and click "Grade" to see results</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
-            )}
+            ) : (
+              // Dedicated Exam Dashboard & Pipeline View
+              <div className="space-y-5">
+                {/* Exam Header */}
+                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setSelectedExamId(null)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                          {selectedExamDetail?.class_section}
+                        </span>
+                        <span className="text-xs text-slate-400">•</span>
+                        <span className="text-xs text-slate-400">{selectedExamDetail?.course_name}</span>
+                      </div>
+                      <h2 className="text-lg font-bold text-white mt-1">
+                        {selectedExamDetail?.title}
+                      </h2>
+                    </div>
+                  </div>
 
-            {/* ══════════════════════ SUBMISSIONS ══════════════════════ */}
-            {activeTab === 'submissions' && (
-              <>
-                <p className="text-muted-foreground">{submissions.length} submission(s) total</p>
-                {submissions.length === 0 ? (
-                  <div className="rounded-2xl bg-card border border-border/50 p-12 text-center"><p className="text-muted-foreground">No submissions graded yet.</p></div>
-                ) : (
-                  <div className="rounded-2xl bg-card border border-border/50 overflow-hidden shadow-sm">
-                    <table className="w-full text-sm">
-                      <thead><tr className="border-b border-border/50 bg-secondary/30">
-                        <th className="text-left p-4 font-semibold">Student</th>
-                        <th className="text-left p-4 font-semibold">Assignment</th>
-                        <th className="text-left p-4 font-semibold">Date</th>
-                        <th className="text-left p-4 font-semibold">Score</th>
-                        <th className="text-left p-4 font-semibold">Status</th>
-                      </tr></thead>
-                      <tbody>
-                        {submissions.map(s => (
-                          <tr key={s.id} className="border-b border-border/20 hover:bg-secondary/20 cursor-pointer transition-colors" onClick={() => setViewingSub(s)}>
-                            <td className="p-4 font-medium">{s.student_name}</td>
-                            <td className="p-4 text-muted-foreground">{assignments.find(a => a.id === s.assignment_id)?.title || '#' + s.assignment_id}</td>
-                            <td className="p-4 text-muted-foreground">{s.submitted_at ? new Date(s.submitted_at).toLocaleDateString() : '—'}</td>
-                            <td className="p-4"><span className={`font-bold ${s.score !== null ? gradeColor(s.score) : ''}`}>{s.score !== null ? `${s.score}%` : '—'}</span></td>
-                            <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs ${s.status === 'Graded' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{s.status}</span></td>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleBatchAutoGrade(selectedExamId)}
+                      className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      Run Batch Auto-Grade (OCR)
+                    </button>
+                    <button
+                      onClick={() => { setBatchExamId(selectedExamId); setShowUploadSheets(true); }}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 transition"
+                    >
+                      <UploadCloud className="w-4 h-4 text-indigo-400" />
+                      Upload Sheets
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submissions & Review Queue Table */}
+                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+                  <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Student Answer Sheets ({selectedExamDetail?.submissions?.length ?? 0})</h3>
+                      <p className="text-xs text-slate-400">Click 'Review & Moderate' to enter side-by-side evaluation canvas</p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                        <tr>
+                          <th className="px-5 py-3.5">Student Name</th>
+                          <th className="px-5 py-3.5">File & Format</th>
+                          <th className="px-5 py-3.5">AI Evaluated Score</th>
+                          <th className="px-5 py-3.5">Status</th>
+                          <th className="px-5 py-3.5">Teacher Moderation</th>
+                          <th className="px-5 py-3.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {selectedExamDetail?.submissions?.map((sub: any) => (
+                          <tr key={sub.id} className="hover:bg-slate-800/30 transition">
+                            <td className="px-5 py-4 font-semibold text-white flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-indigo-400">
+                                {sub.student_name.charAt(0)}
+                              </div>
+                              {sub.student_name}
+                            </td>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-1.5 text-slate-400">
+                                {sub.mime_type.includes('image') ? (
+                                  <ImageIcon className="w-4 h-4 text-amber-400" />
+                                ) : sub.mime_type.includes('pdf') ? (
+                                  <FileText className="w-4 h-4 text-red-400" />
+                                ) : (
+                                  <FileCode className="w-4 h-4 text-indigo-400" />
+                                )}
+                                <span className="truncate max-w-[180px]">{sub.file_path.split('/').pop()}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4">
+                              {sub.score !== null ? (
+                                <div className="font-bold text-white flex items-center gap-1.5">
+                                  <span className="text-sm">{sub.score}</span>
+                                  <span className="text-slate-500 font-normal">/ {sub.max_score}</span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 italic">Pending Grading</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                sub.is_published || sub.status === 'Approved'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                  : sub.score !== null
+                                  ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                              }`}>
+                                {sub.is_published ? 'Published' : sub.score !== null ? 'AI Graded' : 'Pending'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-xs">
+                              {sub.moderator_score !== null && sub.moderator_score !== undefined ? (
+                                <div className="text-emerald-400 font-semibold flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" />
+                                  Verified: {sub.moderator_score} pts
+                                </div>
+                              ) : (
+                                <span className="text-slate-500">Needs Review</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <button
+                                onClick={() => openReviewCanvas(sub.id)}
+                                className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-semibold rounded-lg border border-indigo-500/30 transition flex items-center gap-1.5 ml-auto"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Review & Moderate
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                )}
-              </>
-            )}
-
-          </div>
-        </div>
-      </main>
-
-      {/* ── Modals ── */}
-      <Modal show={showCreateCourse} onClose={() => setShowCreateCourse(false)} title="Create Course">
-        <Input label="Course Title" value={newCourseTitle} onChange={setNewCourseTitle} placeholder="e.g. Introduction to Computer Science" />
-        <Input label="Description" value={newCourseDesc} onChange={setNewCourseDesc} placeholder="e.g. CS101 Fall 2026" />
-        <button onClick={handleCreateCourse} className="w-full p-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-semibold transition-all">Create Course</button>
-      </Modal>
-
-      <Modal show={showCreateAssignment} onClose={() => setShowCreateAssignment(false)} title="Create Assignment">
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">Course</label>
-          <select value={newAssCourseId} onChange={e => setNewAssCourseId(e.target.value ? Number(e.target.value) : '')} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-            <option value="">— Select Course —</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-          </select>
-        </div>
-        <Input label="Title" value={newAssTitle} onChange={setNewAssTitle} placeholder="e.g. Midterm Exam" />
-        <Input label="Description" value={newAssDesc} onChange={setNewAssDesc} placeholder="Describe the assignment" />
-        <TextArea label="Rubric (one criterion per line)" value={newAssRubric} onChange={setNewAssRubric} placeholder={"Correctness: 40 points\nCode style: 20 points\nDocumentation: 20 points\nEdge cases: 20 points"} rows={5} />
-        <Input label="Due Date" value={newAssDueDate} onChange={setNewAssDueDate} type="datetime-local" placeholder="" />
-        <button onClick={handleCreateAssignment} className="w-full p-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-semibold transition-all">Create Assignment</button>
-      </Modal>
-
-      {/* Submission Detail Modal */}
-      <Modal show={!!viewingSub} onClose={() => setViewingSub(null)} title={`Submission: ${viewingSub?.student_name || ''}`}>
-        {viewingSub && (
-          <div className="space-y-3">
-            <p><strong>Assignment:</strong> {assignments.find(a => a.id === viewingSub.assignment_id)?.title}</p>
-            <p><strong>Submitted:</strong> {viewingSub.submitted_at ? new Date(viewingSub.submitted_at).toLocaleString() : '—'}</p>
-            <p><strong>Score:</strong> <span className={`font-bold ${viewingSub.score !== null ? gradeColor(viewingSub.score) : ''}`}>{viewingSub.score !== null ? `${viewingSub.score}%` : 'Pending'}</span></p>
-            <p><strong>Status:</strong> {viewingSub.status}</p>
-            {viewingSub.feedback && (
-              <div className="bg-secondary/30 rounded-xl p-4 border border-border/50 max-h-72 overflow-auto">
-                <pre className="whitespace-pre-wrap text-sm font-mono">{viewingSub.feedback}</pre>
+                </div>
               </div>
             )}
           </div>
         )}
-      </Modal>
+
+        {/* ======================= COURSES & RUBRICS TAB ======================= */}
+        {activeTab === 'courses' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">Academic Courses & Grading Rubrics</h2>
+                <p className="text-xs text-slate-400">Manage courses and define custom multi-criteria scoring rubrics</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowCreateCourse(true)}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-lg shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Course
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {courses.map(c => (
+                <div key={c.id} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-bold text-base text-white">{c.title}</h3>
+                      <p className="text-xs text-slate-400 mt-1">{c.description || 'No description provided'}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-slate-800 text-[11px] font-semibold text-slate-300 border border-slate-700">
+                      ID: #{c.id}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4 text-indigo-400" />
+                      Active Assignments: {assignments.filter(a => a.course_id === c.id).length}
+                    </span>
+                    <button
+                      onClick={() => { setNewAssCourseId(c.id); setShowCreateAssignment(true); }}
+                      className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Assignment
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ======================= INSTANT OCR QUICK-GRADE TAB ======================= */}
+        {activeTab === 'quick-grade' && (
+          <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="text-center space-y-1">
+              <h2 className="text-xl font-bold text-white flex items-center justify-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                Instant Paper & Code Auto-Grader
+              </h2>
+              <p className="text-xs text-slate-400">
+                Upload a student's answer sheet (.png, .jpg, .pdf) or code script (.py, .js) for instant heuristic & OCR evaluation
+              </p>
+            </div>
+
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">Student Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Liam Smith"
+                  value={quickStudentName}
+                  onChange={e => setQuickStudentName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Grading Rubric / Criteria
+                </label>
+                <textarea
+                  rows={4}
+                  value={quickRubric}
+                  onChange={e => setQuickRubric(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                  placeholder="e.g. Correctness: 40 points&#10;Algorithm Logic: 40 points&#10;Clean Code: 20 points"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Answer Sheet File (Image OCR, PDF, or Code)
+                </label>
+                <input
+                  type="file"
+                  onChange={e => setQuickFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                />
+              </div>
+
+              <button
+                onClick={handleQuickGrade}
+                disabled={isQuickGrading}
+                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
+              >
+                {isQuickGrading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Extracting OCR & Evaluating Heuristics...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Run Local Auto-Grade
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Quick Grade Result Output */}
+            {quickGradeResult && (
+              <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div>
+                    <span className="text-xs text-slate-400">Evaluation Report for</span>
+                    <h3 className="font-bold text-base text-white">{quickStudentName}</h3>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-bold text-white">
+                      {quickGradeResult.total_score} / {quickGradeResult.max_score}
+                    </span>
+                    <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Grade: {quickGradeResult.letter_grade} ({quickGradeResult.percentage}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-slate-300">Criteria Breakdown:</h4>
+                  {quickGradeResult.criteria_results?.map((cr: any, i: number) => (
+                    <div key={i} className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+                      <div className="flex justify-between text-xs font-semibold text-white">
+                        <span>{cr.name}</span>
+                        <span className="text-indigo-400 font-bold">{cr.earned_points} / {cr.max_points} pts</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {cr.evidence?.map((ev: string, evIdx: number) => (
+                          <div key={evIdx} className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                            <span className="text-emerald-400">•</span>
+                            <span>{ev}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ========================================================================= */}
+      {/* SIDE-BY-SIDE EVALUATION & REVIEW CANVAS (AICOS / EVALDESK STYLE MODERATION) */}
+      {/* ========================================================================= */}
+      {canvasSubmissionId && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-200">
+          {/* Top Canvas Bar */}
+          <div className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-sm">
+                {canvasDetail?.student_name.charAt(0) || 'S'}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">{canvasDetail?.student_name}</span>
+                  <span className={`px-2 py-0.2 rounded-full text-[10px] font-bold border ${
+                    canvasDetail?.is_published
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                  }`}>
+                    {canvasDetail?.is_published ? 'Approved & Published' : 'In Review'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Script File: {canvasDetail?.file_name} • Format: {canvasDetail?.mime_type}
+                </span>
+              </div>
+            </div>
+
+            {/* Total Marks Banner */}
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Total Score</span>
+                <span className="text-lg font-bold text-white">
+                  {editableCriteria.reduce((sum, c) => sum + (c.earned_points || 0), 0)}
+                  <span className="text-xs font-normal text-slate-400 ml-1">/ {canvasDetail?.max_score}</span>
+                </span>
+              </div>
+
+              <div className="h-6 w-px bg-slate-800" />
+
+              <button
+                onClick={() => handleSaveModeration(false)}
+                disabled={isSavingModeration}
+                className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition"
+              >
+                Save Draft
+              </button>
+
+              <button
+                onClick={() => handleSaveModeration(true)}
+                disabled={isSavingModeration}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition"
+              >
+                <Check className="w-4 h-4" />
+                Approve & Publish Grade
+              </button>
+
+              <button
+                onClick={closeReviewCanvas}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 2-Column Split View: Left Canvas vs Right Question Breakdown */}
+          <div className="flex-1 grid grid-cols-12 overflow-hidden">
+            {/* Left Column: Answer Sheet / Submitted Script Canvas */}
+            <div className="col-span-7 border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+              {/* Canvas Controls Header */}
+              <div className="bg-slate-900/60 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4 text-indigo-400" />
+                  Answer Sheet Document Preview
+                </span>
+                <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setZoomLevel(prev => Math.max(50, prev - 10))}
+                    className="p-1 text-slate-400 hover:text-white rounded"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[11px] font-mono px-2 text-slate-300">{zoomLevel}%</span>
+                  <button
+                    onClick={() => setZoomLevel(prev => Math.min(200, prev + 10))}
+                    className="p-1 text-slate-400 hover:text-white rounded"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Canvas Content Body */}
+              <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-slate-950/80">
+                {canvasDetail?.is_image ? (
+                  <div
+                    style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+                    className="transition-transform duration-100 shadow-2xl rounded-lg border border-slate-800 overflow-hidden"
+                  >
+                    <img
+                      src={`${API}/submissions/${canvasDetail.id}/file`}
+                      alt="Student Answer Sheet"
+                      className="max-w-2xl w-full h-auto object-contain bg-white"
+                    />
+                  </div>
+                ) : (
+                  // Syntax-highlighted code / text viewer
+                  <div
+                    style={{ fontSize: `${(zoomLevel / 100) * 12}px` }}
+                    className="w-full h-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl p-5 overflow-auto font-mono text-slate-200 leading-relaxed shadow-xl"
+                  >
+                    <div className="text-[10px] text-slate-500 pb-3 mb-3 border-b border-slate-800 flex justify-between">
+                      <span>{canvasDetail?.file_name}</span>
+                      <span>UTF-8 Document / Script</span>
+                    </div>
+                    <pre className="whitespace-pre-wrap">{canvasDetail?.file_content}</pre>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Question-by-Question Grading & Moderation */}
+            <div className="col-span-5 bg-slate-900/40 flex flex-col overflow-hidden">
+              <div className="p-4 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Question-Wise Evaluation & Rubric Scores
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Adjust earned points directly; total score recalculates automatically.
+                  </p>
+                </div>
+              </div>
+
+              {/* Question Breakdown List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                {editableCriteria.map((crit, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-md hover:border-slate-700 transition"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                          Criterion {idx + 1}
+                        </span>
+                        <h4 className="font-bold text-xs text-white mt-0.5">{crit.name}</h4>
+                      </div>
+
+                      {/* Interactive Score Adjustment Input */}
+                      <div className="flex items-center gap-1.5 shrink-0 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max={crit.max_points}
+                          value={crit.earned_points}
+                          onChange={e => handleScoreChange(idx, parseFloat(e.target.value) || 0)}
+                          className="w-12 bg-transparent text-right font-bold text-sm text-emerald-400 focus:outline-none"
+                        />
+                        <span className="text-xs text-slate-500 font-semibold">/ {crit.max_points}</span>
+                      </div>
+                    </div>
+
+                    {/* AI Confidence & Percentage */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full"
+                          style={{ width: `${crit.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        {crit.percentage}% match
+                      </span>
+                    </div>
+
+                    {/* Evidence & Remarks */}
+                    {crit.evidence && crit.evidence.length > 0 && (
+                      <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80 space-y-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                          Evidence Found in Script:
+                        </span>
+                        {crit.evidence.map((ev, evI) => (
+                          <div key={evI} className="text-[11px] text-slate-300 flex items-start gap-1.5">
+                            <span className="text-emerald-400 shrink-0">•</span>
+                            <span>{ev}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {crit.remarks && (
+                      <p className="text-[11px] text-slate-400 italic">
+                        Remark: {crit.remarks}
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                {/* Teacher Moderation Notes */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <label className="text-xs font-bold text-slate-300">
+                    Teacher / Examiner Feedback Remarks
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={moderatorNotes}
+                    onChange={e => setModeratorNotes(e.target.value)}
+                    placeholder="Enter personalized feedback or commendations for this student..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================= CREATE EXAM MODAL ======================= */}
+      {showCreateExam && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-bold text-base text-white">Create New Examination</h3>
+              <button onClick={() => setShowCreateExam(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Exam Title</label>
+              <input
+                type="text"
+                placeholder="e.g. Midterm Assessment 2026"
+                value={newExamTitle}
+                onChange={e => setNewExamTitle(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Course</label>
+                <select
+                  value={newExamCourseId}
+                  onChange={e => setNewExamCourseId(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">Select Course...</option>
+                  {courses.map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Class / Section</label>
+                <input
+                  type="text"
+                  value={newExamClass}
+                  onChange={e => setNewExamClass(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Total Marks</label>
+                <input
+                  type="number"
+                  value={newExamTotalMarks}
+                  onChange={e => setNewExamTotalMarks(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Duration (minutes)</label>
+                <input
+                  type="number"
+                  value={newExamDuration}
+                  onChange={e => setNewExamDuration(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Evaluation Rubric</label>
+              <textarea
+                rows={3}
+                value={newExamRubric}
+                onChange={e => setNewExamRubric(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowCreateExam(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateExam}
+                className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-500 shadow-md shadow-indigo-600/20"
+              >
+                Create Exam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================= BATCH UPLOAD SHEETS MODAL ======================= */}
+      {showUploadSheets && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-bold text-base text-white">Batch Upload Answer Sheets</h3>
+              <button onClick={() => setShowUploadSheets(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Select Examination</label>
+              <select
+                value={batchExamId}
+                onChange={e => setBatchExamId(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">Choose Exam...</option>
+                {exams.map(e => (
+                  <option key={e.id} value={e.id}>{e.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Upload Scanned Answer Sheets (.pdf, .png, .jpg, code)
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={e => setBatchFiles(e.target.files)}
+                className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Student Names (optional comma-separated)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Aarav Patel, Priya Sen, Kabir Mehta"
+                value={batchNames}
+                onChange={e => setBatchNames(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowUploadSheets(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadSheets}
+                disabled={isBatchUploading}
+                className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-500 shadow-md shadow-indigo-600/20 flex items-center gap-1.5"
+              >
+                {isBatchUploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                Upload Sheets
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================= CREATE COURSE MODAL ======================= */}
+      {showCreateCourse && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-bold text-base text-white">Create New Course</h3>
+              <button onClick={() => setShowCreateCourse(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Course Title</label>
+              <input
+                type="text"
+                placeholder="e.g. CS301: Advanced Algorithms"
+                value={newCourseTitle}
+                onChange={e => setNewCourseTitle(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
+              <textarea
+                rows={3}
+                value={newCourseDesc}
+                onChange={e => setNewCourseDesc(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowCreateCourse(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!newCourseTitle.trim()) return;
+                  await fetch(`${API}/courses`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newCourseTitle, description: newCourseDesc }),
+                  });
+                  setNewCourseTitle('');
+                  setNewCourseDesc('');
+                  setShowCreateCourse(false);
+                  fetchAll();
+                }}
+                className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-xl hover:bg-indigo-500 shadow-md shadow-indigo-600/20"
+              >
+                Create Course
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

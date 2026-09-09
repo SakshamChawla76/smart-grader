@@ -14,14 +14,16 @@
 
 | Feature | Description |
 |---|---|
-| **Dashboard** | Real-time overview of active courses, pending grades, and recent assignments |
-| **Course Management** | Create and manage courses via the API |
-| **Assignment Management** | Create assignments with rubrics and due dates |
-| **AI Grading** | Upload student submissions (PDF, TXT, code, images) and grade them against a rubric |
-| **Local Heuristic Engine** | Runs entirely locally — **no API keys, no cloud LLMs, zero cost** |
-| **Submission Tracking** | All submissions are saved to SQLite with scores and feedback |
-| **JWT Authentication** | Register/login endpoints with bcrypt password hashing |
-| **Premium Dark UI** | Glassmorphism, gradients, micro-animations, and responsive layout |
+| **Executive Dashboard** | Real-time overview of active courses, exam pipeline status, and recent submissions |
+| **Examination & Assessment Hub** | Complete exam lifecycle management with class/section, duration, and rubrics |
+| **3-Stage Evaluation Pipeline** | Ingest Answer Sheets ➔ Local AI Auto-Grading & OCR ➔ Teacher Review Queue |
+| **Side-by-Side Review Canvas** | Interactive document canvas on the left with question-wise score moderation on the right |
+| **Multi-Format OCR Engine** | Parses scanned answer sheets (.png, .jpg), handwritten PDFs, and source code files locally |
+| **Human-in-the-Loop Moderation** | Teachers can override AI scores per question, add personal remarks, and publish grades |
+| **Batch Script Ingestion** | Upload multiple student papers in one click with automatic student name resolution |
+| **Zero Cost & Offline** | Runs entirely locally without paid cloud LLMs or external API subscriptions |
+| **Premium Dark Glassmorphic UI** | Responsive, modern dark aesthetic with smooth transitions and micro-animations |
+
 
 ---
 
